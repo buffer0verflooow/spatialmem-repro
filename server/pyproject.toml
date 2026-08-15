@@ -1,7 +1,7 @@
 [project]
-name = "spatialmem-observe"
+name = "spatialmem-server"
 version = "0.1.0"
-description = "结构化观察服务：帧 -> VLM -> 空间记忆 JSON（/v1/observe）"
+description = "统一服务端：智能眼镜全链路（图像帧 -> 多模态识别 -> 精简结果回传）+ 空间记忆结构化观察（/v1/observe）"
 requires-python = ">=3.11"
 
 dependencies = [
@@ -9,14 +9,38 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
+    "langgraph>=0.2.50",
+    "structlog>=24.4",
+    "prometheus-client>=0.21",
     "pillow>=11.0",
     "httpx>=0.28",
+    "redis>=5.2",
+    "sqlalchemy>=2.0",
+    "cryptography>=42.0",
 ]
 
 [project.optional-dependencies]
+# RAG 旁路。默认 kb_backend=null，不装也能跑（上下文降级为空）
+kb = [
+    "chromadb>=0.5.20",
+    "sentence-transformers>=3.3",
+]
+# MySQL 持久化。默认 db_backend=null
+db = [
+    "aiomysql>=0.2.0",
+]
+# 人脸检测（前置规则）
+face = [
+    "opencv-python-headless>=4.10",
+]
+# JWT 鉴权（可选，默认使用 HMAC）
+security = [
+    "python-jose[cryptography]>=3.3",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "websockets>=13.1",
     "ruff>=0.8",
 ]
 

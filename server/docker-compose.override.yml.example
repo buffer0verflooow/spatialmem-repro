@@ -1,0 +1,12 @@
+# 开发环境覆盖 —— 本地跑 app，只启动 Redis/MySQL 后端服务。
+# 使用方式：cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# 然后：
+#   docker compose up -d redis mysql   # 只启动后端
+#   make run                            # 本地跑 app（默认连 localhost）
+
+services:
+  linksee:
+    # 开发时不启动 app 容器，代码在本地跑
+    profiles:
+      - disabled

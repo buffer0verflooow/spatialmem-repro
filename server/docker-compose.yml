@@ -1,0 +1,179 @@
+# linksee-server Docker Compose 部署文件
+#
+# 快速开始：
+#   1. 准备密钥文件（或设置环境变量）：
+#      echo "DASHSCOPE_API_KEY=sk-xxxx" > .env.docker
+#      echo "DEVICE_SHARED_SECRET=$(openssl rand -hex 32)" >> .env.docker
+#
+#   2. 构建并启动（生产环境必须指定 IMAGE_TAG）：
+#      export IMAGE_TAG=$(git rev-parse --short HEAD)
+#      docker compose --env-file .env.docker up -d
+#
+#   3. 检查状态：
+#      curl http://localhost:8000/healthz
+#      curl http://localhost:8000/readyz
+#
+#   4. 查看日志：
+#      docker compose logs -f linksee
+#
+# 覆盖默认值：
+#   docker compose --env-file .env.docker up -d    # 用自定义 env 文件
+#   或在 docker-compose.override.yml 中覆盖特定配置
+#
+# 仅启动基础服务（Redis + MySQL，app 本地跑）：
+#   docker compose up -d redis mysql
+
+services:
+  # ============================================================
+  # linksee-server — 智能眼镜后端
+  # ============================================================
+  linksee:
+    build:
+      context: .
+      args:
+        # 可选依赖，逗号分隔：db（MySQL）, kb（Chroma RAG）, face（人脸检测）
+        # 留空则只装基础依赖（FastAPI + Redis + httpx）
+        EXTRAS: ${COMPOSE_EXTRAS:-db,kb}
+    image: linksee-server:${IMAGE_TAG:-dev}
+    container_name: linksee-server
+    restart: unless-stopped
+    ports:
+      - "${LINKSEE_PORT:-8000}:8000"
+    environment:
+      # ---- 运行模式 ----
+      ENV: ${ENV:-prod}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      # ---- 接入层 ----
+      DEVICE_SHARED_SECRET: ${DEVICE_SHARED_SECRET:-dev-secret-change-me}
+      WS_HEARTBEAT_TIMEOUT_S: ${WS_HEARTBEAT_TIMEOUT_S:-30}
+
+      # ---- 帧准入闸门 ----
+      GATE_RATE_LIMIT_PER_SEC: ${GATE_RATE_LIMIT_PER_SEC:-1.0}
+      GATE_PHASH_DUP_DISTANCE: ${GATE_PHASH_DUP_DISTANCE:-8}
+      GATE_MIN_INTERVAL_S: ${GATE_MIN_INTERVAL_S:-3.0}
+      GATE_FORCE_DISTANCE: ${GATE_FORCE_DISTANCE:-16}
+      GATE_READ_RATE_PER_MIN: ${GATE_READ_RATE_PER_MIN:-6.0}
+      GATE_READ_BURST: ${GATE_READ_BURST:-3.0}
+
+      # ---- 推理层 ----
+      INFERENCE_BACKEND: ${INFERENCE_BACKEND:-mock}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DASHSCOPE_BASE_URL: ${DASHSCOPE_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      VL_MODEL: ${VL_MODEL:-qwen-vl-plus}
+      VL_TIMEOUT_S: ${VL_TIMEOUT_S:-10.0}
+      VL_RETRIES: ${VL_RETRIES:-1}
+      VL_MAX_TOKENS: ${VL_MAX_TOKENS:-300}
+      IMAGE_MAX_EDGE: ${IMAGE_MAX_EDGE:-1024}
+      IMAGE_JPEG_QUALITY: ${IMAGE_JPEG_QUALITY:-75}
+
+      # ---- 阅读模式 ----
+      OCR_MODEL: ${OCR_MODEL:-qwen-vl-ocr}
+      OCR_TIMEOUT_S: ${OCR_TIMEOUT_S:-15.0}
+      OCR_MAX_TOKENS: ${OCR_MAX_TOKENS:-2048}
+      OCR_MAX_CHARS: ${OCR_MAX_CHARS:-2000}
+
+      # ---- RAG 旁路 ----
+      KB_BACKEND: ${KB_BACKEND:-null}
+      KB_DIR: ${KB_DIR:-/app/data/kb/current}
+      KB_TOP_K: ${KB_TOP_K:-3}
+      KB_MIN_SCORE: ${KB_MIN_SCORE:-0.7}
+      KB_CTX_TTL_S: ${KB_CTX_TTL_S:-60}
+
+      # ---- 存储 ----
+      KV_BACKEND: ${KV_BACKEND:-redis}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DB_BACKEND: ${DB_BACKEND:-null}
+      MYSQL_DSN: ${MYSQL_DSN:-mysql+aiomysql://linksee:linksee@mysql:3306/linksee}
+
+      # ---- 结果整形 ----
+      REPLY_MAX_CHARS: ${REPLY_MAX_CHARS:-30}
+
+      # ---- 延迟预算 ----
+      HARD_DEADLINE_S: ${HARD_DEADLINE_S:-5.0}
+
+      # ---- 规则层 ----
+      FACE_DETECT_ENABLED: ${FACE_DETECT_ENABLED:-false}
+
+    volumes:
+      # 知识库持久化目录（KB_BACKEND=chroma 时需要）
+      - kb_data:/app/data/kb
+    depends_on:
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    networks:
+      - linksee-net
+
+  # ============================================================
+  # Redis — 在线状态、限流、去重、RAG 上下文缓存
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: linksee-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - linksee-net
+    # 生产环境建议加密码：
+    # command: redis-server --requirepass ${REDIS_PASSWORD:-linksee}
+    # 然后在 REDIS_URL 里带上：redis://:linksee@redis:6379/0
+
+  # ============================================================
+  # MySQL 8 — 推理日志、驳回记录、设备/会话持久化
+  # ============================================================
+  mysql:
+    image: mysql:8.4
+    container_name: linksee-mysql
+    restart: unless-stopped
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # 初始化脚本：创建 linksee 库和专用用户
+      - ./docker/mysql-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p${MYSQL_ROOT_PASSWORD:-root}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - linksee-net
+    # MySQL 8.4 默认认证插件是 caching_sha2_password，aiomysql 需要额外配置。
+    # 如果连接报错，取消下面的注释强制使用 mysql_native_password：
+    # command: --default-authentication-plugin=mysql_native_password
+
+volumes:
+  redis_data:
+    driver: local
+  mysql_data:
+    driver: local
+  kb_data:
+    driver: local
+
+networks:
+  linksee-net:
+    driver: bridge

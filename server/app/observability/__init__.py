@@ -1,5 +1,8 @@
-"""最小日志封装：get_logger / setup_logging。"""
+from app.observability.logging import (
+    bind_request,
+    clear_request,
+    get_logger,
+    setup_logging,
+)
 
-from .logging import get_logger, setup_logging
-
-__all__ = ["get_logger", "setup_logging"]
+__all__ = ["bind_request", "clear_request", "get_logger", "setup_logging"]

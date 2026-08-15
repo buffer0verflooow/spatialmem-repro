@@ -28,7 +28,8 @@ spatialmem-repro/
 （src/spatialmem：COLMAP/深度/锚点/物体提升）**。采集端可以是任意 Android 手机
 （`android-app/`，可选），也可以直接用手机相机录像后由
 `scripts/prepare_session.py` 抽帧。另有一条结构化观察支路：把视频帧发给
-观察服务（`server/`，`/v1/observe`）→ VLM 结构化 JSON → 空间记忆入库。
+统一服务端（`server/`，原 linksee-server 已并入；`/v1/observe`）→ VLM
+结构化 JSON → 空间记忆入库。
 
 ## 目录
 
@@ -65,7 +66,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 链路代码的构建/启动方式见各子目录 README：
 
 - 手机摄像头采集：`android-app/README.md`
-- 结构化观察服务：`server/README.md`
+- 统一服务端（眼镜全链路 + 结构化观察）：`server/README.md`
 
 ## 里程碑
 
