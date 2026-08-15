@@ -12,9 +12,8 @@
   独立编写的最小入口，仅用于启动本观察服务；
 - 测试：`tests/unit/test_observe.py`、`tests/integration/test_observe_endpoint.py`。
 
-**不包含** `thu-linksee/linksee-server` 的传输 / 监听 / 网关 / Agent / 闸门 /
-规则 / 存储等代码。如需完整智能眼镜后端（WebSocket 推流、帧准入、Agent 等），
-请直接使用原仓库 `thu-linksee/linksee-server`，本目录不与它混用。
+本目录只关注“视频帧 → 结构化观察”这一条路径，不包含通用后端服务的传输 /
+网关 / 规则 / 存储等基础设施。
 
 ## 快速开始
 

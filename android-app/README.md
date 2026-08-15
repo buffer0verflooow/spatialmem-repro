@@ -1,50 +1,41 @@
-# BlindAssist 眼镜视频链路（精简版）
+# 手机摄像头视频采集器（可选）
 
-空间记忆复现链路的 APP 端：雷鸟 X3 Pro 眼镜 → 手机的视频数据传输与落盘。
+空间记忆复现需要一段第一视角视频。最简单的方式就是用普通手机摄像头录一段
+视频，然后交给核心算法处理。本目录是一个可选的 Android 采集器，方便在手机
+上直接录制并保存到统一目录。
 
-这是原 `blindassist`（buffer0verflooow/blindassist）的**精简版**：只保留
-眼镜视频采集上行（glasses）、链路协议（link）、手机端接收解码与 H.264 落盘
-（app/link/transport + recording）、无线连接（p2p）和 PC 端录制脚本（scripts）。
-无障碍 UI、视觉/风险/语音等与复现无关的模块已移除。
+**不依赖任何特定硬件**：普通 Android 手机即可。
 
 ## 数据流
 
 ```text
-雷鸟 X3 Pro（glasses 模块）
-  Camera2 → H.264 → TCP 上行（link 协议，15 FPS 640×360）
+手机摄像头（本 App）
+  录制 mp4 → App 私有目录 files/SpatialMem/spatialmem_<时间戳>.mp4
         ↓
-手机（app 模块）
-  GlassLinkServer 接收 → H264Decoder 解码 → X3ProVideoSource
-  h264-tee 原样落盘：video.h264 + video_timeline.csv（零转码）
-        ↓
-PC（scripts/m1_record.py）
-  会话目录 video.h264 + video_timeline.csv → ffmpeg 转 mp4 / 供 COLMAP 等分析
+PC（仓库根目录 scripts/prepare_session.py）
+  抽帧 + 时间线 → data/ 会话目录 → 核心算法（src/spatialmem）
 ```
+
+也可以完全不用本 App：用手机自带相机录像，把 mp4 拷到电脑后
+`scripts/prepare_session.py` 一样能处理。
+
+视频文件位于 `Android/data/com.example.spatialmem.capture/files/SpatialMem/`，
+可用 `adb pull` 或文件管理器导出。
+
+## 构建与运行
+
+```bash
+# 需要 Android SDK（compileSdk 35, minSdk 29）
+./gradlew :app:assembleDebug
+```
+
+安装到手机后：授权相机/麦克风 → 开始录制 → 走动一圈 → 停止。
+视频保存在系统相册 Movies/SpatialMem 下。
 
 ## 目录
 
 ```text
 android-app/
-├── glasses/     # 眼镜端：采集编码上行（独立 App，仅 core-ktx 依赖）
-├── link/        # 纯 JVM 协议：编解码/状态机/时钟对齐/过期门（可独立测试）
-├── p2p/         # Wi-Fi Direct 无线连接
-├── app/         # 手机端：接收/解码/落盘（link/transport + recording + source + util）
-├── scripts/     # PC 端录制/回放：m1_record.py / m1_mock_glasses.py / m1_mock_phone.py / pose_check.py
-└── docs/        # M1 眼镜手机链路设计
-```
-
-## 构建与测试
-
-```bash
-# 需要 Android SDK（compileSdk 35, minSdk 29）
-./gradlew :link:test :app:compileDebugKotlin :glasses:compileDebugKotlin :p2p:compileDebugKotlin
-```
-
-链路协议（link）为纯 JVM 模块，89 个单测覆盖编解码/状态机/时钟同步。
-
-## 录制示例
-
-```bash
-# 眼镜模式录 30–60s，手机会话目录出现 video.h264（>1MB）与 video_timeline.csv
-python3 scripts/m1_record.py --label indoor_walk --seconds 60
+├── app/         # Android 采集器（CameraX：预览 + 录制 mp4）
+└── README.md
 ```

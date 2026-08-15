@@ -9,7 +9,7 @@
 每个模型的原始回答存 data/cup_walk/vlm_raw_<model>.jsonl（已存在则跳过，
 --force 重跑）；汇总报告输出到 --out。
 
-VLM 密钥：通过环境变量 LINKSEE_API_KEY 提供（DashScope key，已验证可走
+VLM 密钥：通过环境变量 DASHSCOPE_API_KEY 提供（DashScope key，已验证可走
 OpenAI 兼容 HTTP 接口）。请求只发证据帧本身，不发其它数据。
 
 Usage:
@@ -60,9 +60,9 @@ EVIDENCE_FRAMES = [
 
 
 def load_key() -> str:
-    key = os.environ.get("LINKSEE_API_KEY")
+    key = os.environ.get("DASHSCOPE_API_KEY")
     if not key:
-        raise SystemExit("未找到 API key：请设置环境变量 LINKSEE_API_KEY")
+        raise SystemExit("未找到 API key：请设置环境变量 DASHSCOPE_API_KEY")
     return key
 
 

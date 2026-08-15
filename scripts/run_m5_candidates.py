@@ -34,9 +34,9 @@ from spatialmem.candidates import (
 
 
 def load_key() -> str:
-    key = os.environ.get("LINKSEE_API_KEY")
+    key = os.environ.get("DASHSCOPE_API_KEY")
     if not key:
-        raise SystemExit("未找到 API key：请设置环境变量 LINKSEE_API_KEY")
+        raise SystemExit("未找到 API key：请设置环境变量 DASHSCOPE_API_KEY")
     return key
 
 

@@ -2,17 +2,26 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
-    <!--
-      精简版：只保留眼镜视频传输链路（X3ProVideoSource / GlassLinkServer /
-      H264Decoder / SessionFiles）。完整 App（无障碍 UI、视觉、语音等）
-      见原工程 buffer0verflooow/blindassist。
-    -->
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="true" />
+
     <application
         android:allowBackup="false"
-        android:label="BlindAssist Link">
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>

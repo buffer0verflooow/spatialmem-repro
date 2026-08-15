@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="linksee-observe",
+        title="spatialmem-observe",
         description="结构化观察服务：帧 -> VLM -> 空间记忆 JSON",
         version="0.1.0",
         lifespan=lifespan,

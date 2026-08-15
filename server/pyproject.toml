@@ -1,5 +1,5 @@
 [project]
-name = "linksee-observe"
+name = "spatialmem-observe"
 version = "0.1.0"
 description = "结构化观察服务：帧 -> VLM -> 空间记忆 JSON（/v1/observe）"
 requires-python = ">=3.11"

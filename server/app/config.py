@@ -1,6 +1,6 @@
 """结构化观察服务配置。
 
-独立精简实现：只含 /v1/observe 所需字段，不依赖 linksee-server 的其他模块。
+独立精简实现：只含 /v1/observe 所需字段。
 """
 
 from __future__ import annotations

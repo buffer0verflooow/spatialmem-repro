@@ -14,8 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "BlindAssistS21"
+rootProject.name = "SpatialMemCapture"
 include(":app")
-include(":link")
-include(":glasses")
-include(":p2p")
