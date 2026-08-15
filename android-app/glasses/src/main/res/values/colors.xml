@@ -1,0 +1,4 @@
+<resources>
+    <!-- App 图标底色：取自 图标.png 的背景白（约 #FBFAFA） -->
+    <color name="ic_launcher_background">#FBFAFA</color>
+</resources>

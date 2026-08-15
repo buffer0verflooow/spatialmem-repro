@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    极简状态界面（docs/archive/工单-M1-03-打回4-Activity不能finish.md 第 3 节）：
+    纯色背景 + 一行状态文字，没有任何交互、预览渲染或推理逻辑。
+    这块屏幕只为让进程保持前台、保住相机优先级。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <TextView
+        android:id="@+id/status_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center"
+        android:text="@string/status_collecting"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp" />
+
+</FrameLayout>

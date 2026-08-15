@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">BlindAssist Link</string>
+    <string name="link_connected">眼镜已连接</string>
+    <string name="link_connecting">眼镜连接中</string>
+    <string name="link_waiting">等待眼镜连接</string>
+    <string name="link_disconnected">眼镜未连接</string>
+</resources>

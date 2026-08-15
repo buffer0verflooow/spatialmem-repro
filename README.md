@@ -8,6 +8,30 @@ Retrieval》（arXiv:2601.14895v2）复现"物体 + 属性 + 关系"的层级空
 有根树记忆（房间 → 结构性锚点 → 物体 → 双层描述），支持度量关系查询
 （距离/方向/可见性）与长期物体检索。
 
+## 仓库结构（完整链路）
+
+本仓库自包含复现所需的三块代码：
+
+```text
+spatialmem-repro/
+├── android-app/          # APP 端：眼镜视频数据传输（雷鸟 X3 Pro → 手机，H.264 落盘）
+│   ├── glasses/          #   眼镜端：Camera2 采集编码上行
+│   ├── link/             #   纯 JVM 链路协议（编解码/状态机/时钟对齐）
+│   ├── p2p/              #   Wi-Fi Direct 无线连接
+│   ├── app/              #   手机端：接收/解码/h264-tee 落盘（video.h264 + timeline）
+│   └── scripts/          #   PC 端录制/回放（m1_record.py 等）
+├── src/spatialmem/       # 核心算法：记忆树/关系/查询/几何/管线
+├── scripts/              # 复现脚本（COLMAP/深度/锚点/物体提升/评测）
+├── docs/                 # 方案与复现计划
+└── tests/                # 核心算法单测
+```
+
+数据流：**眼镜（android-app/glasses）→ 手机（android-app/app，落盘 video.h264 +
+timeline）→ PC（android-app/scripts/m1_record.py）→ 核心算法（src/spatialmem，
+COLMAP/深度/锚点/物体提升）**；另有一条 M5 结构化观察支路：手机提问帧 →
+服务端（`thu-linksee/linksee-server`，外部仓库的 `/v1/observe`）→ VLM 结构化
+JSON → 客户端空间记忆入库。服务端代码不内嵌本仓库，按需单独部署。
+
 ## 目录
 
 ```text
@@ -16,6 +40,7 @@ spatialmem-repro/
 ├── requirements.txt
 ├── docs/
 │   └── 空间物体关系记忆-结论与SpatialMem复现计划.md
+├── android-app/          # 眼镜视频数据传输（独立 Android 工程，见其 README）
 ├── src/spatialmem/
 │   ├── memory.py      # 记忆树：节点/关系/双层描述/更新
 │   ├── relations.py   # 关系谓词：on/above/below/near/contains/视角方向
@@ -38,6 +63,11 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
     ../glasses-recordings/session_20260803_125024_indoor_walk \
     data/indoor_walk --fps 3
 ```
+
+链路代码的构建/启动方式见各子目录 README：
+
+- 眼镜视频传输：`android-app/README.md`
+- 结构化观察服务：外部仓库 `thu-linksee/linksee-server`（`/v1/observe`），不内嵌
 
 ## 里程碑
 

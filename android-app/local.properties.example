@@ -1,0 +1,17 @@
+# 复制为 local.properties 并填入真实值后构建（local.properties 已被 gitignore，勿提交）
+# 仅配置云端功能时需要；全部留空 = 纯离线模式（避障/OCR/语音命令仍可用）。
+
+# 场景描述（云端 OpenAI 视觉模型）
+# OPENAI_API_KEY=sk-...
+# OPENAI_BASE_URL=https://api.openai.com/v1
+# OPENAI_VISION_MODEL=gpt-4.1-mini
+
+# 在线大脑（Qwen Realtime 沉浸式语音对话，DashScope）
+# QWEN_REALTIME_API_KEY=sk-...      # 或 DASHSCOPE_API_KEY
+# QWEN_REALTIME_MODEL=qwen3.5-omni-flash-realtime
+
+# LinkSee 云端服务（三值齐全才启用）
+# LINKSEE_SERVER_URL=ws://<host>:8000
+# LINKSEE_DEVICE_ID=<device-id>
+# LINKSEE_DEVICE_SECRET=<device-secret>
+# CLOUD_OBSERVE_URL=http://127.0.0.1:8000
