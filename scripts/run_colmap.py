@@ -16,6 +16,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from spatialmem.colmap_io import read_images_binary
+
 
 def main() -> None:
     ap = argparse.ArgumentParser()
