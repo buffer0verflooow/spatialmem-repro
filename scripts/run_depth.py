@@ -44,6 +44,9 @@ def main() -> None:
     depth_dir = args.out_dir / "depth"
     depth_dir.mkdir(parents=True, exist_ok=True)
     calib: list[dict] = []
+    # 仿射拟合失败（点分布病态）的帧：用已成功帧的 (a,b) 中位数兜底，
+    # 避免混入纯比例（b=0）深度造成地板系统性偏移。
+    valid_fits: list[tuple[float, float]] = []
 
     n = len(names)
     for i in range(0, n, args.step):
@@ -57,7 +60,9 @@ def main() -> None:
         blob = small.transpose(2, 0, 1)[None, ...]
         disp = sess.run(None, {in_name: blob})[0][0]  # (256,256) inverse depth
 
-        # metric calibration: d_metric ~= C / disp, C = median(d_metric * disp)
+        # metric calibration: MiDaS disparity 与深度是仿射关系 disp = a/d + b
+        # （不是纯比例！b 截距会造成地板系统性偏移），
+        # 用画面内 COLMAP 稀疏点最小二乘拟合 (a, b)，d = a / (disp - b)。
         pose = poses[i]
         uv, z = project_points(pts, pose, intrinsics)
         in_view = (
@@ -85,33 +90,56 @@ def main() -> None:
                 + disp[y1, x0] * (1 - wx) * wy
                 + disp[y1, x1] * wx * wy
             )
-            valid = (disp_s > 1e-4) & np.isfinite(disp_s)
+            valid = (disp_s > 1e-4) & np.isfinite(disp_s) & (z_sel > 0.2)
             if valid.sum() >= 10:
-                ratios = z_sel[valid] * disp_s[valid]
-                lo, hi = np.percentile(ratios, 10), np.percentile(ratios, 90)
-                C = float(np.median(ratios[(ratios >= lo) & (ratios <= hi)]))
+                inv_d = 1.0 / z_sel[valid]
+                d_obs = disp_s[valid]
+                A = np.stack([inv_d, np.ones_like(inv_d)], axis=1)
+                coef, *_ = np.linalg.lstsq(A, d_obs, rcond=None)
+                a_fit, b_fit = float(coef[0]), float(coef[1])
+                # 兜底：拟合退化（a<=0）时回退纯比例 C 法
+                if a_fit > 0.01 and np.isfinite(a_fit) and np.isfinite(b_fit):
+                    a, b = a_fit, b_fit
+                else:
+                    if valid_fits:
+                        a = float(np.median([f[0] for f in valid_fits]))
+                        b = float(np.median([f[1] for f in valid_fits]))
+                    else:
+                        ratios = z_sel[valid] * d_obs
+                        lo, hi = np.percentile(ratios, 10), np.percentile(ratios, 90)
+                        a = float(np.median(ratios[(ratios >= lo) & (ratios <= hi)]))
+                        b = 0.0
             else:
-                C = 0.0
+                a, b = 0.0, 0.0
         else:
-            C = 0.0
-        if C <= 0:
+            a, b = 0.0, 0.0
+        if a <= 0:
             print(f"  warn: frame {name}: no calibration points ({len(px)})")
-            C = np.nan
+            a = np.nan
+        elif np.isfinite(a):
+            valid_fits.append((a, b))
 
         # metric depth map at native resolution (float16 to save space)
         disp_up = cv2.resize(disp, (640, 360), interpolation=cv2.INTER_LINEAR)
-        depth = np.where(disp_up > 1e-4, C / np.maximum(disp_up, 1e-4), 0.0).astype(np.float16)
+        # d = a / (disp - b)；disp <= b 的像素（过远/无效）置 0
+        denom = np.maximum(disp_up - b, 1e-4)
+        depth = np.where(
+            (a > 0) & (disp_up > b + 1e-4),
+            a / denom,
+            0.0,
+        ).astype(np.float16)
         np.save(depth_dir / (name.replace(".jpg", ".npy")), depth)
         calib.append(
             {
                 "frame": name,
-                "C": C,
-                "n_calib_points": int(len(px)),
+                "a": a,
+                "b": b,
+                "n_calib_points": len(px),
                 "median_disp": float(np.median(disp)),
             }
         )
         if (i // args.step) % 20 == 0:
-            print(f"frame {i}/{n}: C={C:.3f}")
+            print(f"frame {i}/{n}: a={a:.3f} b={b:.3f}")
 
     with (args.out_dir / "depth_calib.jsonl").open("w") as f:
         for c in calib:

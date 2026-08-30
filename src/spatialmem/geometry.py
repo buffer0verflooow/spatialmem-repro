@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 import numpy as np
 
-Box = Tuple[float, float, float, float, float, float]
+Box = tuple[float, float, float, float, float, float]
 
 
-def box_center(box: Box) -> Tuple[float, float, float]:
+def box_center(box: Box) -> tuple[float, float, float]:
     xmin, ymin, zmin, xmax, ymax, zmax = box
     return ((xmin + xmax) / 2, (ymin + ymax) / 2, (zmin + zmax) / 2)
 
@@ -22,7 +20,7 @@ def box_top_z(box: Box) -> float:
     return box[5]
 
 
-def footprint(box: Box) -> Tuple[float, float, float, float]:
+def footprint(box: Box) -> tuple[float, float, float, float]:
     xmin, ymin, _, xmax, ymax, _ = box
     return (xmin, ymin, xmax, ymax)
 
@@ -74,6 +72,36 @@ def ray_box_intersect(origin: np.ndarray, direction: np.ndarray, box: Box) -> bo
         if tmin > tmax:
             return False
     return True
+
+
+def ray_box_interval(
+    origin: np.ndarray, direction: np.ndarray, box: Box
+) -> tuple | None:
+    """Slab test returning (t_enter, t_exit), or None when the ray misses.
+
+    `direction` is not required to be normalized; returned `t` uses the same
+    units as `direction` (multiply by |direction| for world distance).
+    """
+    o = np.asarray(origin, dtype=float)
+    d = np.asarray(direction, dtype=float)
+    lo = np.array([box[0], box[1], box[2]])
+    hi = np.array([box[3], box[4], box[5]])
+    tmin = 0.0
+    tmax = np.inf
+    for i in range(3):
+        if abs(d[i]) < 1e-12:
+            if o[i] < lo[i] or o[i] > hi[i]:
+                return None
+            continue
+        t1 = (lo[i] - o[i]) / d[i]
+        t2 = (hi[i] - o[i]) / d[i]
+        if t1 > t2:
+            t1, t2 = t2, t1
+        tmin = max(tmin, t1)
+        tmax = min(tmax, t2)
+        if tmin > tmax:
+            return None
+    return (tmin, tmax)
 
 
 def yaw_from_pose(pose: np.ndarray) -> float:

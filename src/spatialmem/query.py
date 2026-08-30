@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 
 from .memory import Node, SpatialMemory
 from .relations import egocentric_direction
-
 
 SYNONYMS = {
     "水桶": ["bucket", "plastic bucket", "water bucket"],
@@ -59,7 +56,7 @@ def locate(memory: SpatialMemory, text: str) -> list[Node]:
         return []
     hits: list[tuple[Node, float]] = []
     for n in memory.nodes():
-        direct_text = " ".join([n.label, n.category, n.layer1_text, n.layer2_text]).lower()
+        direct_text = f"{n.label} {n.category} {n.layer1_text} {n.layer2_text}".lower()
         aliases = " ".join(n.attributes.get("aliases", [])).lower()
         if any(n.label.lower() == q or n.category.lower() == q for q in qs):
             hits.append((n, 3.0))  # exact label/category
@@ -100,11 +97,50 @@ def relational_query(
     return out
 
 
+def multi_hop_query(
+    memory: SpatialMemory,
+    start_hint: str,
+    predicates: list[str],
+    end_hint: str | None = None,
+) -> list[Node]:
+    """Walk a chain of relation predicates from start_hint, returning end nodes.
+
+    Paper example (wall → window → mug, §3.4):
+        multi_hop_query(memory, "墙", ["near", "near"], "杯子")
+
+    Each step follows active relations whose predicate matches the next entry
+    in `predicates`, in either direction (subject→object or object→subject).
+    The final reached nodes are filtered by `end_hint` when provided.
+    """
+    current = locate(memory, start_hint) if start_hint else memory.nodes()
+    for pred in predicates:
+        nxt: list[Node] = []
+        seen: set[str] = set()
+        for node in current:
+            for r in memory.relations_of(node.node_id):
+                if r.status != "active" or r.predicate != pred:
+                    continue
+                other_id = r.object if r.subject == node.node_id else r.subject
+                if other_id in seen:
+                    continue
+                other = memory.get_node(other_id)
+                if other is not None:
+                    nxt.append(other)
+                    seen.add(other_id)
+        current = nxt
+        if not current:
+            break
+    if end_hint:
+        end_ids = {n.node_id for n in locate(memory, end_hint)}
+        current = [n for n in current if n.node_id in end_ids]
+    return current
+
+
 def to_egocentric(
     memory: SpatialMemory,
     node_id: str,
     viewer_pose: np.ndarray,
-) -> Optional[dict]:
+) -> dict | None:
     node = memory.get_node(node_id)
     if node is None:
         return None

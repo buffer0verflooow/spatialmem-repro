@@ -7,8 +7,6 @@ front/behind) are egocentric and computed against a viewer pose at query time.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 
 from .geometry import (
@@ -18,8 +16,8 @@ from .geometry import (
     box_top_z,
     euclidean,
     footprint_overlap,
-    horizontal_distance,
     pose_translate,
+    ray_box_interval,
 )
 
 
@@ -34,7 +32,7 @@ def predicate_on(
     return z_ok and footprint_overlap(child, support) >= min_overlap
 
 
-def predicate_above_below(a: Box, b: Box, margin: float = 0.02) -> Optional[str]:
+def predicate_above_below(a: Box, b: Box, margin: float = 0.02) -> str | None:
     """'above' / 'below' by center z. Returns None when roughly equal."""
     za, zb = box_center(a)[2], box_center(b)[2]
     if za - zb > margin:
@@ -63,6 +61,37 @@ def predicate_contains(container: Box, item: Box, margin: float = 0.0) -> bool:
         item
     ) <= box_top_z(container) + margin
     return inside_xy and z_ok
+
+
+def predicate_visible(
+    viewer_position: np.ndarray,
+    target_box: Box,
+    occluder_boxes: list[Box],
+    margin: float = 1e-3,
+) -> bool:
+    """Whether the target box's center is visible from the viewer position.
+
+    Cast a ray from the viewer to the target center; if any occluder box
+    (other than the target itself) intersects the ray before reaching the
+    target, the target is considered occluded.
+    """
+    target_center = np.asarray(box_center(target_box), dtype=float)
+    direction = target_center - np.asarray(viewer_position, dtype=float)
+    target_dist = float(np.linalg.norm(direction))
+    if target_dist < 1e-9:
+        return True
+    # Normalize so the returned slab t is a world distance along the ray.
+    direction = direction / target_dist
+    for box in occluder_boxes:
+        if box == target_box:
+            continue
+        interval = ray_box_interval(viewer_position, direction, box)
+        if interval is None:
+            continue
+        t_enter = interval[0]
+        if t_enter < target_dist - margin:
+            return False
+    return True
 
 
 def egocentric_direction(
@@ -94,4 +123,3 @@ def egocentric_direction(
     else:
         tag = "left" if bearing > 0 else "right"
     return {"distance": dist, "bearing_deg": bearing, "tag": tag, "z_rel": z}
-
