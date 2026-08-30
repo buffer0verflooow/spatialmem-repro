@@ -32,12 +32,18 @@ def test_observe_returns_structured_json(client):
     assert resp.status_code == 200
     body = resp.json()
     assert set(body.keys()) == {
-        "name", "color", "location", "attributes", "confidence", "support"
+        "name", "color", "location", "attributes", "confidence", "support", "anchors"
     }
     assert isinstance(body["name"], str)
     assert isinstance(body["location"], str)
     assert isinstance(body["support"], dict)
     assert set(body["support"].keys()) == {"name", "color", "location", "attributes"}
+    assert isinstance(body["anchors"], list)
+    for anchor in body["anchors"]:
+        assert set(anchor.keys()) == {
+            "type", "name", "direction", "distance_m", "confidence"
+        }
+        assert anchor["type"] in ("door", "window", "wall")
 
 
 def test_observe_bad_base64_returns_400(client):

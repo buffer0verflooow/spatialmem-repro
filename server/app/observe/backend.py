@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import time
 from typing import Protocol, runtime_checkable
 
 import httpx
@@ -26,22 +25,31 @@ class MockObserveBackend:
         {"name": "电动剃须刀", "color": "蓝色", "location": "在地上",
          "attributes": "飞利浦,电动", "confidence": 0.9,
          "support": {"name": "地面", "color": "", "location": "浴室",
-                     "attributes": "瓷砖"}},
+                     "attributes": "瓷砖"},
+         "anchors": [{"type": "door", "name": "门", "direction": "left",
+                      "distance_m": 2.5, "confidence": 0.9}]},
         {"name": "小磨香油", "color": "深色", "location": "在桌上",
          "attributes": "瓶装,调味品", "confidence": 0.9,
          "support": {"name": "桌子", "color": "棕色", "location": "餐厅",
-                     "attributes": "木质"}},
+                     "attributes": "木质"},
+         "anchors": [{"type": "window", "name": "窗户", "direction": "front",
+                      "distance_m": 3.0, "confidence": 0.85}]},
         {"name": "电风扇", "color": "白色", "location": "在地上",
          "attributes": "落地扇", "confidence": 0.85,
          "support": {"name": "地面", "color": "", "location": "客厅",
-                     "attributes": "木地板"}},
+                     "attributes": "木地板"},
+         "anchors": [{"type": "wall", "name": "墙", "direction": "back",
+                      "distance_m": 1.5, "confidence": 0.95}]},
         {"name": "鼠标", "color": "黑色", "location": "在桌上",
          "attributes": "有线", "confidence": 0.85,
          "support": {"name": "桌子", "color": "原木色", "location": "书房",
-                     "attributes": "木质,长条桌"}},
+                     "attributes": "木质,长条桌"},
+         "anchors": [{"type": "door", "name": "门", "direction": "right",
+                      "distance_m": 2.0, "confidence": 0.88}]},
         {"name": "", "color": "", "location": "",
          "attributes": "", "confidence": 0.0,
-         "support": {"name": "", "color": "", "location": "", "attributes": ""}},
+         "support": {"name": "", "color": "", "location": "", "attributes": ""},
+         "anchors": []},
     ]
 
     def __init__(self, latency_ms: int = 0) -> None:
@@ -99,7 +107,6 @@ class DashScopeObserveBackend:
                 },
             ],
         }
-        start = time.perf_counter()
         try:
             resp = await self._client.post("/chat/completions", json=body)
         except httpx.TimeoutException as exc:
@@ -135,6 +142,7 @@ class DashScopeObserveBackend:
             "attributes": str(parsed.get("attributes", "")).strip(),
             "confidence": float(parsed.get("confidence", 0.0)),
             "support": support,
+            "anchors": _normalize_anchors(parsed.get("anchors")),
         }
 
     async def close(self) -> None:
@@ -166,3 +174,30 @@ def _parse_json(text: str) -> dict | None:
         return parsed if isinstance(parsed, dict) else None
     except json.JSONDecodeError:
         return None
+
+
+def _normalize_anchors(raw: object) -> list[dict]:
+    """把 VLM 输出的 anchors 归一化为稳定结构，过滤非法类型/空名。"""
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw[:5]:
+        if not isinstance(item, dict):
+            continue
+        atype = str(item.get("type", "")).strip().lower()
+        aname = str(item.get("name", "")).strip()
+        if atype not in ("door", "window", "wall") or not aname:
+            continue
+        direction = str(item.get("direction", "")).strip()
+        if direction not in ("left", "right", "front", "back"):
+            direction = ""
+        out.append(
+            {
+                "type": atype,
+                "name": aname,
+                "direction": direction,
+                "distance_m": float(item.get("distance_m", 0.0) or 0.0),
+                "confidence": float(item.get("confidence", 0.0)),
+            }
+        )
+    return out

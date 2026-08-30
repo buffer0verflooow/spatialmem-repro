@@ -30,6 +30,16 @@ class ObserveSupport(BaseModel):
     attributes: str = ""
 
 
+class ObserveAnchor(BaseModel):
+    """结构性锚点（门/窗/墙）：SpatialMem L1 锚点层，供客户端建立空间关系。"""
+
+    type: str = ""  # door | window | wall
+    name: str = ""
+    direction: str = ""  # left | right | front | back
+    distance_m: float = 0.0
+    confidence: float = 0.0
+
+
 class ObserveResponse(BaseModel):
     name: str = ""
     color: str = ""
@@ -37,6 +47,7 @@ class ObserveResponse(BaseModel):
     attributes: str = ""
     confidence: float = 0.0
     support: ObserveSupport | None = None
+    anchors: list[ObserveAnchor] = []
 
 
 @router.post("/observe", response_model=ObserveResponse)

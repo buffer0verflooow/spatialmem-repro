@@ -4,7 +4,7 @@
 服务端用 VLM 返回结构化 JSON，客户端直接入库，不再解析自由文本。
 """
 
-from .backend import build_observe_backend, MockObserveBackend, DashScopeObserveBackend
+from .backend import DashScopeObserveBackend, MockObserveBackend, build_observe_backend
 from .router import router
 
 __all__ = [
