@@ -1,11 +1,11 @@
-# SpatialMem 论文复现与 AI 眼镜空间记忆开发交接（2026-08-29）
+# SpatialMem 论文复现与 AI 眼镜空间记忆开发交接（2026-08-31）
 
 新会话请先完整阅读本文件，然后从「最新状态」继续；下方各节是继续工作所需的全部上下文。
 详细设计/结论/路线图见 `docs/空间物体关系记忆-结论与SpatialMem复现计划.md`（§4.7–4.9）。
 
 ## 0. 一句话状态
 
-AI 眼镜空间记忆的**服务端锚点识别（门/窗/墙）、客户端场景隔离、回访恢复与语音置顶、锚点多视角确认、事件驱动采集、完整谓词与多跳查询、锚点关系评测、导航航点、地图级 A* 路径规划、俯视小地图可视化与眼镜 POSE 通道供数**均已实现并通过测试；P0/P1 路线图中 P0-1a、P0-1b、P0-2、P0-3、P1-a、P1-b、P1-c、客户端集成已完成；位姿闭环第 1 档（眼镜 POSE 供数）与第 2 档第 1 阶段（跟随视角：实时朝向旋转小地图 + 相对转向播报）完成，剩余项（位置递推与到达判定、标定精度调优）见 §5。
+AI 眼镜空间记忆的**服务端锚点识别（门/窗/墙）、客户端场景隔离、回访恢复与语音置顶、锚点多视角确认、事件驱动采集、完整谓词与多跳查询、锚点关系评测、导航航点、地图级 A* 路径规划、俯视小地图可视化与眼镜 POSE 通道供数**均已实现并通过测试；P0/P1 路线图中 P0-1a、P0-1b、P0-2、P0-3、P1-a、P1-b、P1-c、客户端集成已完成；位姿闭环第 1 档（眼镜 POSE 供数）、第 2 档第 1 阶段（跟随视角：实时朝向旋转小地图 + 相对转向播报）与**第 2 档第 2 阶段（眼镜 IMU 通道 + 步态检测 + 位置递推 + 到达判定）已完成**，剩余项（标定精度调优、相机 AR 叠加）见 §5。
 
 ## 1. 代码库结构
 
@@ -15,13 +15,13 @@ AI 眼镜空间记忆的**服务端锚点识别（门/窗/墙）、客户端场�
 |---|---|
 | `spatialmem-repro/` | **论文复现工程（Python）**：度量重建、稠密地图、路径规划、评测 |
 | `spatialmem-repro/server/` | **统一服务端（FastAPI）**：智能眼镜全链路 + `/v1/observe` 空间记忆结构化观察（anchors 门/窗/墙） |
-| `blindassist/` | **客户端主工程（Android/Kotlin）**：空间记忆 M5（候选池/确认/检索/场景隔离/导航） |
+| `blindassist/` | **客户端主工程（Android/Kotlin）**：空间记忆 M5（候选池/确认/检索/场景隔离/导航）+ 位姿闭环（POSE/IMU 通道、步态检测、位置递推、到达判定） |
 | `linksee-client-android/` | 客户端镜像工程（`spatialmem` 包与 blindassist 完全同步，UI 有差异） |
 | `linksee-server/` | 旧服务端仓库（已迁移进 `spatialmem-repro/server`；其 `.venv` 可用于跑测试，`.env.docker` 含 DashScope Key） |
 | `glasses-recordings/` | 眼镜/手机录制会话（含 pose.csv/imu.csv 等） |
 | `paper/` | BlindAssist 论文草稿（避障方向，与空间记忆分开） |
 
-## 2. 最新状态（2026-08-29 从这继续）
+## 2. 最新状态（2026-08-31 从这继续）
 
 ### 2.1 服务端：/v1/observe 识别结构性锚点（门/窗/墙）
 
@@ -42,6 +42,7 @@ anchors 为 `{type: door|window|wall, name, direction: left|right|front|back, di
 - **导航航点**（`MemoryNavigator.kt`）："带我去门口/去厨房/走到窗户那"→ 目标词解析 → 航点序列（锚点→物体/支撑物）→ 分步播报（"继续/下一步"推进）。
 - **地图级导航**（`WalkableMap.kt`）：Kotlin 版占用网格 + A*（四邻域+转向惩罚）+ RDP 转折点 + 逐段播报；协调器 `navigate()` 优先地图（目标命中 map.goals 且默认起点存在），否则回退记忆方位航点。
 - **可视化**（`NavigationOverlayView.kt`）：发起导航时叠加**俯视小地图**（障碍/地板/起点/门口/蓝色路径折线）；演示地图资产 `blindassist/app/src/main/assets/maps/office_demo.json`（办公室稠密地图 + 自动检测门口）。
+- **位置递推 + 到达判定**（位姿闭环第 2 档第 2 阶段，2026-08-31）：眼镜端新增 **IMU(0x03) 通道**（`GlassLinkService` 加速度采样 50Hz/100ms 批，`ImuPayloadCodec` 线格式 u16 count + {i64 t, f32 ax,ay,az, u8 acc}；握手能力新末尾字段 `hasLinearAcceleration`，旧 APK 无尾字节按 false 兼容）；手机端 `X3ProVideoSource.onImuPacket`（时钟换算同 POSE 口径）→ `CaptureCoordinator.onGlassesImu` → `MemoryLearningCoordinator.updateUserImu`；`StepDetector`（幅值→高通 0.8s→低通 60ms→自适应阈值 1.6·EMA|·| 下界 1.2 m/s²，上升沿 + 250ms 不应期，dt 断流重置）；步事件 × 步长 0.7m × 实时 mapFacing 递推位置（导航发起时锚定计划起点），`NavPoseState.xM/yM` 填真实位置（替换原固定起点）；距目标 ≤1.5m 自动播报「已到达X附近」并 `clearNavigation()`（每次导航一次）。仅导航用不落盘，pose.csv 语义不变。眼镜无加速度计自动停用 IMU 通道（能力上报 false）。
 - **手动服务端地址**（`linksee-client-android` 设置页「配置服务端地址」）：保存的地址同时写入 LinkSee 网关与 `/v1/observe` 运行时覆盖（`AppSettingsStore.linkSeeServerUrlOverride` / `cloudObserveUrlOverride`）；`MemoryLearningCoordinator.observeStructuredFromFrame` 优先用运行时 observe 覆盖，缺省回退 `BuildConfig.CLOUD_OBSERVE_URL`；「测试连接」改为探测 `/healthz`（再回退 `/health`），适配本地 Docker 统一服务端。
 
 ### 2.3 复现工程：稠密地图 + 路径规划（P0-1）
@@ -66,17 +67,22 @@ anchors 为 `{type: door|window|wall, name, direction: left|right|front|back, di
 - `app/src/main/java/com/example/blindassist/spatialmem/`：
   - `MemoryModels.kt`（ConfirmedNode + StructuralAnchor + sceneId）
   - `MemoryLearningStore.kt`（JSONL 持久化，legacy 归旧场景）
-  - `MemoryLearningCoordinator.kt`（观察入库/场景切换/检索/导航）
-  - `MemoryNavigator.kt`（导航航点 + MapNavPlan）
+  - `MemoryLearningCoordinator.kt`（观察入库/场景切换/检索/导航/位置递推/到达判定）
+  - `MemoryNavigator.kt`（导航航点 + MapNavPlan + advanceStep/isArrived 纯数学）
+  - `StepDetector.kt`（步态检测：带通 + 自适应阈值 + 不应期）
   - `WalkableMap.kt`（Kotlin 地图 A*）
   - `SceneRegistry.kt`（场景注册表）
   - `NavigationOverlayView.kt`（俯视小地图叠加）
   - `ObservationEventDetector.kt`（事件驱动采集：驻足检测 + 触碰/开门事件入口）
+- `link/`：`ImuPayloadCodec.kt`（IMU 0x03 线格式）+ `ControlCodec`（hasLinearAcceleration 能力字段）
+- `app/.../link/transport/`：`X3ProVideoSource.onImuPacket`（IMU 解码→手机时钟域）、`GlassLinkServer`（IMU 通道分发）
+- `glasses/.../GlassLinkService.kt`：加速度采样 50Hz/100ms 批上行（`startImuCapture`）
+- `app/.../capture/CaptureCoordinator.kt`：`onGlassesImu` 接线 + `onNavArrived` 到达播报
 - `app/src/main/java/com/example/blindassist/voice/VoiceCommandRouter.kt`：NAVIGATE 命令
 - `app/src/main/java/com/example/blindassist/capture/CaptureCoordinator.kt`：接线（加载演示地图、onNavigationPath 回调）
 - `app/src/main/res/layout/activity_main.xml`：navOverlay 叠加层
 - `app/src/main/assets/maps/office_demo.json`：演示地图
-- 测试：`app/src/test/java/com/example/blindassist/spatialmem/`（含 SceneRegistryTest、WalkableMapTest、MemoryNavigatorTest、SpatialAnchorSimulationTest）
+- 测试：`app/src/test/java/com/example/blindassist/spatialmem/`（含 SceneRegistryTest、WalkableMapTest、MemoryNavigatorTest、StepDetectorTest、SpatialAnchorSimulationTest）；`link/src/test/`（含 ImuPayloadCodecTest、ControlCodecTest 兼容回归门）
 
 ### 复现工程
 - `src/spatialmem/map2d.py`、`dense_map.py`、`src/spatialmem/anchors.py`（墙 RANSAC，门/窗几何开口检测仍未做）
@@ -140,12 +146,13 @@ docker ps --filter name=linksee-server-anchors   # 容器：localhost:8000，镜
 | P1-a | 事件驱动采集（驻足/触碰/开门触发） | ✅ 驻足自动检测已接入（朝向稳定 6s + 场景未变 → 1280px `event:stationary` 高分辨率观察，冷却 20s）；触碰/开门预留 `event:touch` / `event:door_open` 事件入口待信号接入 |
 | P1-b | 完整谓词 + 多跳查询（above/below、可见性、wall→window→mug） | ✅ `predicate_visible`（视线遮挡 slab 测试）+ `multi_hop_query`（沿关系链逐跳，wall→window→mug 单测覆盖）；above/below/on/near/contains 与单跳 relational_query 此前已有 |
 | P1-c | 门/窗锚点关系评测（对标原文 Scene 1 的 0.82） | ✅ `anchor_eval.py` + `scripts/eval_anchor_relations.py`：按 type+direction+距离容差匹配，输出每类型 grounding F1 对标 0.82/0.88；教室照片真实 VLM 响应 3/3 全对（单样本演示，缺大规模 GT 场景，离线几何开口检测仍未做） |
-| 位姿闭环 | 眼镜 POSE 通道供数 + 相机注册 AR 叠加 + 实时跟随导航 | 🟡 第 1 档 ✅（POSE 消费链路 + pose.csv 同源）；第 2 档第 1 阶段 ✅（跟随视角：heading-up 小地图 + 用户箭头 + 实时相对转向播报，单测覆盖纯数学）；剩余：位置递推（步数/IMU）与自动到达、相机 AR 叠加 |
+| 位姿闭环 | 眼镜 POSE 通道供数 + 相机注册 AR 叠加 + 实时跟随导航 | 🟡 第 1 档 ✅（POSE 消费链路 + pose.csv 同源）；第 2 档第 1 阶段 ✅（跟随视角：heading-up 小地图 + 用户箭头 + 实时相对转向播报，单测覆盖纯数学）；第 2 档第 2 阶段 ✅（IMU 通道 + StepDetector 步态检测 + 位置递推 + 到达自动播报收尾，纯数学单测覆盖）；剩余：相机 AR 叠加、步长自适应（漂移大时引入步频/身高先验）、真机眼镜联调验证步数精度 |
 
 ## 6. 已知问题与重要决策
 
 ### 已知问题/边界
-- **无实时位姿（部分解决）**：眼镜 POSE 已接入视觉管线与 pose.csv，但地图航点仍用演示默认起点、叠加层仍是俯视小地图而非相机 AR 线——剩余位姿闭环（AR 叠加 + 实时跟随导航）未做。
+- **无实时位姿（大部分解决）**：眼镜 POSE + IMU 已接入，位置递推驱动小地图与到达判定；剩余相机 AR 叠加未做。递推步长固定 0.7m（无绝对尺度参考），长距离行走会漂移，待真机联调评估是否引入步长自适应。
+- **真机步态参数未标定**：StepDetector 阈值（1.2 m/s² 下界/1.6×EMA/250ms 不应期）为合成波形调参，实机步频/加速度口径（LINEAR_ACCELERATION vs ACCELEROMETER 回退）需眼镜联调后复核。
 - **COLMAP 稀疏点云地板点极少**（24~83 点）：必须走深度稠密融合；`cup_walk` 是桌面场景（最低点 0.89m），不适合验证地板，用 `indoor_walk_full`。
 - **MiDaS disparity 与深度是仿射关系**（`disp=a/d+b`，b 实测≈315）：已修 run_depth.py，勿回退纯比例。
 - **numpy `[x,y]` 与 Kotlin row-major 网格序不一致**：导出 JSON 地图必须 `occ.T.ravel()`，否则障碍错位（已修，勿回退）。

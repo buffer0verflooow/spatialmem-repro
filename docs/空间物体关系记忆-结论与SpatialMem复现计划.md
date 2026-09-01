@@ -268,6 +268,29 @@ SpatialMem §3.6 的 navigation waypoint 已在客户端落地（`MemoryNavigato
 
 剩余：位置递推（步数检测/IMU 积分，需眼镜侧补加速计通道）与自动到达判定。
 
+### 4.8.4 位置递推 + 到达判定（位姿闭环第 2 档第 2 阶段，2026-08-31）
+
+补齐眼镜侧加速计通道与步态位置递推，导航从「只有朝向」升级为「朝向 + 位置」：
+
+- **眼镜端 IMU(0x03) 通道**：`GlassLinkService` 注册 `TYPE_LINEAR_ACCELERATION`
+  （缺失回退 `TYPE_ACCELEROMETER`）@50Hz，100ms 批经 `ImuPayloadCodec`
+  （线格式 u16 count + {i64 t, f32 ax/ay/az, u8 acc}，与 POSE 同风格）上行；
+  握手能力追加末尾字段 `hasLinearAcceleration`，旧 APK 无尾字节按 false 兼容
+  （HELLO 截断测试相应放宽最后 1 字节为容忍区）。
+- **手机端消费**：`GlassLinkServer` 分发 IMU → `X3ProVideoSource.onImuPacket`
+  （`ClockSyncEstimator` 换算，同 POSE 口径）→ `CaptureCoordinator.onGlassesImu`
+  → `MemoryLearningCoordinator.updateUserImu`；仅导航用，不落盘（pose.csv 语义不变）。
+- **步态检测（`StepDetector`，纯数学）**：合加速度幅值 → 一阶高通（τ=0.8s 去重力/直流）
+  → 一阶低通（τ=60ms 抑振动）→ 自适应阈值（max(1.2 m/s², 1.6×EMA|filtered|)）
+  上升沿 + 250ms 不应期；dt 越界/乱序按断流重置不产生虚步。
+- **位置递推**：发起地图导航时位置锚定计划起点；步事件 × 固定步长 0.7m × 实时
+  mapFacing 前进（`MemoryNavigator.advanceStep`，θ 方向 = (cosθ, sinθ)，与
+  segmentBearingRad 同口径）；`NavPoseState.xM/yM` 填递推位置，叠加层箭头随动。
+- **到达判定**：递推位置距地图目标 ≤1.5m（`MemoryNavigator.isArrived`）→ 播报
+  「已到达X附近」并 `clearNavigation()` 收尾（每次导航只触发一次）。
+
+剩余：相机 AR 叠加；步长自适应（真机联调漂移评估后再引入步频/身高先验）。
+
 ### 4.9 P0/P1 问题解决路线图（2026-08-29 起）
 
 原则：不做短期效果，按"能真正解决"的方案推进。
@@ -282,7 +305,7 @@ SpatialMem §3.6 的 navigation waypoint 已在客户端落地（`MemoryNavigato
 | P1-b | 完整谓词 + 多跳查询（above/below、可见性、wall→window→mug） | ✅ `predicate_visible`（视线遮挡）+ `multi_hop_query`（沿关系链逐跳，wall→window→mug 单测覆盖） |
 | P1-c | 门/窗锚点关系评测（对标原文 Scene 1 的 0.82） | ✅ `anchor_eval.py` + `scripts/eval_anchor_relations.py`：type+direction+距离容差匹配 → 每类型 grounding F1 对标 0.82/0.88；教室照片真实 VLM 响应 3/3 全对（单样本演示） |
 | 集成 | 客户端 `MemoryNavigator` 接入地图航点：有 map 且目标命中 goals 时走格点 A* 航点，无 map 回退记忆方位航点；新增 `NavigationOverlayView` 俯视小地图 + 路径折线（发起导航时叠加显示）；演示地图资产 `assets/maps/office_demo.json`（办公室稠密地图 + 自动检测门口目标） | ✅ 已实现（随 P0-1b 产物演示） |
-| 位姿闭环 | 眼镜 POSE 通道供数 + 相机注册 AR 叠加 + 实时跟随导航 | 🟡 第 1 档 ✅（POSE 消费 + pose.csv 同源）；第 2 档第 1 阶段 ✅（heading-up 跟随视角 + 用户箭头 + 实时相对转向播报）；剩余：位置递推（步数/IMU）与到达判定、相机 AR 叠加 |
+| 位姿闭环 | 眼镜 POSE 通道供数 + 相机注册 AR 叠加 + 实时跟随导航 | 🟡 第 1 档 ✅（POSE 消费 + pose.csv 同源）；第 2 档第 1 阶段 ✅（heading-up 跟随视角 + 用户箭头 + 实时相对转向播报）；第 2 档第 2 阶段 ✅（IMU 通道 + 步态检测 + 位置递推 + 到达判定，§4.8.4）；剩余：相机 AR 叠加、步长自适应 |
 
 路径规划 CLI：`scripts/plan_navigation.py <metric_cloud.npz> --start-x .. --start-y .. --goal-x .. --goal-y ..`
 
