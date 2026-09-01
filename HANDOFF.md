@@ -152,7 +152,12 @@ docker ps --filter name=linksee-server-anchors   # 容器：localhost:8000，镜
 
 ### 已知问题/边界
 - **无实时位姿（大部分解决）**：眼镜 POSE + IMU 已接入，位置递推驱动小地图与到达判定；剩余相机 AR 叠加未做。递推步长固定 0.7m（无绝对尺度参考），长距离行走会漂移，待真机联调评估是否引入步长自适应。
-- **真机步态参数未标定**：StepDetector 阈值（1.2 m/s² 下界/1.6×EMA/250ms 不应期）为合成波形调参，实机步频/加速度口径（LINEAR_ACCELERATION vs ACCELEROMETER 回退）需眼镜联调后复核。
+- **StepDetector 离线标定（2026-09-01，`scripts/eval_step_detector.py`）**：StepDetector.kt 的 Python 逐行移植（`--self-test` 复刻全部 7 个单测向量，结果一致）+ 真实 IMU 回放。结论：
+  1. **真实数据假阳性 0**：唯一有 IMU 的会话（hq720p，83.2s 手机静止，50.3Hz）检出 0 步——正确，且含 5.17 m/s² 单次冲击瞬态不虚警；纯噪声地板扫描显示 MIN_THRESHOLD ≥0.3 即零虚警（0.15–0.2 仅因该冲击 1 次虚警），当前 1.2 下界余量约 4 倍。
+  2. **灵敏度悬崖（关键发现）**：半波步态经高通（扣均值）+ 低通后有效峰值仅 **0.5–0.6×A**（A 为合加速度步态幅值），MIN_THRESHOLD=1.2 要求 A ≥ 2.2–2.8 m/s² 才能检出——弱步态（A<2）完全漏检；且连续行走下自适应阈值（1.6×EMA≈0.48×峰值）恒小于 1.2 下界，**实际上被下界压死，自适应机制是死代码**。
+  3. **已应用（两客户端同步）**：MIN_THRESHOLD 降到 **0.6**（混合测试：A≥1.5 全步频 100% 检出、A=1.2@1.4Hz 101%、静止虚警 0；注意噪声地板是"手机放桌上"口径，眼镜佩戴时头动/说话会更高）。StepDetector.kt 常量与注释已更新（blindassist 与 linksee-client-android 同步），7 个单测全过；Python 移植默认值同步。真机联调时录「静止 60s + 正常行走 60s」两段，用同一脚本回放定 A 分布后终定。
+  4. 其余参数（REFRACTORY 250ms、FAC 1.6、LP/HP τ）在扫描中不敏感，暂不动。
+- **真机步态参数未标定**：见上条；实机步频/加速度口径（LINEAR_ACCELERATION vs ACCELEROMETER 回退）需眼镜联调后复核。现有 glasses-recordings 其余会话 imu.jsonl 均为空（已知差距），无真实行走 IMU 数据。
 - **COLMAP 稀疏点云地板点极少**（24~83 点）：必须走深度稠密融合；`cup_walk` 是桌面场景（最低点 0.89m），不适合验证地板，用 `indoor_walk_full`。
 - **MiDaS disparity 与深度是仿射关系**（`disp=a/d+b`，b 实测≈315）：已修 run_depth.py，勿回退纯比例。
 - **numpy `[x,y]` 与 Kotlin row-major 网格序不一致**：导出 JSON 地图必须 `occ.T.ravel()`，否则障碍错位（已修，勿回退）。
